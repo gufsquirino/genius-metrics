@@ -34,15 +34,25 @@ function calcMetrics(inp) {
 
 function buildPrompt(inp, c, type) {
   const cat = type === "catalog";
+  const days = +inp.campaign_days || 1;
+  const spendPerDay = (inp.ad_spend / days).toFixed(2);
+  const ordersPerDay = (inp.orders_paid / days).toFixed(1);
+  const revenuePerDay = (c.rev_paid / days).toFixed(2);
+
   return `Você é gestor sênior de e-commerce/dropshipping. Analise as métricas abaixo e retorne SOMENTE JSON válido, sem texto antes ou depois, sem markdown.
 
 CAMPANHA: ${inp.campaign_name || "Sem nome"} | TIPO: ${cat ? "CATÁLOGO" : "PRODUTO ÚNICO"} | CRIATIVO: ${inp.creative_type} | PREÇO: R$${inp.price || "N/I"} | FRETE: ${inp.shipping || "N/I"}
 
-MÉTRICAS:
+PERÍODO: ${days} dia${days > 1 ? "s" : ""} de campanha
+MÉDIAS DIÁRIAS: Gasto/dia:R$${spendPerDay} | Pedidos pagos/dia:${ordersPerDay} | Receita paga/dia:R$${revenuePerDay}
+IMPORTANTE: Todas as métricas abaixo são ACUMULADAS nos últimos ${days} dias. Não interprete como dados de 1 dia. Ao comentar volume e ritmo, use as médias diárias acima como referência.${days <= 3 ? "\nATENÇÃO: Campanha jovem (≤3 dias) — dados ainda em fase de aprendizado do algoritmo. Evite conclusões definitivas sobre otimização." : days <= 7 ? "\nOBSERVAÇÃO: Campanha com menos de 1 semana — dados em consolidação, especialmente CPM e CTR tendem a estabilizar após 7 dias." : ""}
+
+MÉTRICAS ACUMULADAS (${days} dias):
 Gasto:R$${inp.ad_spend} | CPM:R$${inp.cpm} | CTR:${inp.ctr}% | Imp:${c.imp} | Cliques:${c.clicks} | CPC:R$${c.cpc}
 ATC:${inp.add_to_cart} | Checkout:${inp.checkout_initiated} | InfoPgto:${inp.payment_info}
 PedidosTotal:${inp.orders_total} | PedidosPagos:${inp.orders_paid} | FatTotal:R$${inp.revenue_total} | FatPago:R$${c.rev_paid}
 TaxaATC:${c.atc_rate}% | ATC→Chk:${c.chk_atc}% | Chk→Pgto:${c.pay_chk}% | Pgto→Pedido:${c.pur_pay}% | Confirmação:${c.prate}% | CPA:R$${c.cpa} | ROAS:${c.roas}x | Ticket:R$${c.ticket}${cat ? ` | Itens/pedido:${c.ipo}` : ""}
+${inp.context ? `\nCONTEXTO QUALITATIVO INFORMADO PELO ANUNCIANTE:\n${inp.context}\nLeve este contexto em conta em toda a análise — ele pode explicar comportamentos das métricas e deve influenciar as recomendações.` : ""}
 
 BENCHMARKS: CPM≤45bom/>70caro | CTR<1.5ruim/>2.5bom/>3.5excelente | CPC≤1.2exc/>2ruim | ATC<3ruim/>6bom | ATC→Chk>50bom | Confirmação<75recuperar | ROAS<2prob/>2.5bom
 
@@ -173,7 +183,7 @@ function Badge({ status }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-const DEFAULTS = { campaign_name: "", creative_type: "Vídeo", price: "", shipping: "", delivery: "", ad_spend: "", cpm: "", ctr: "", add_to_cart: "", checkout_initiated: "", payment_info: "", orders_total: "", orders_paid: "", revenue_total: "", products_sold: "" };
+const DEFAULTS = { campaign_name: "", creative_type: "Vídeo", price: "", shipping: "", delivery: "", campaign_days: "1", context: "", ad_spend: "", cpm: "", ctr: "", add_to_cart: "", checkout_initiated: "", payment_info: "", orders_total: "", orders_paid: "", revenue_total: "", products_sold: "" };
 
 export default function GeniusMetrics() {
   const [v, setV] = useState(DEFAULTS);
@@ -252,7 +262,7 @@ export default function GeniusMetrics() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
             <div>
               <div style={{ fontSize: 19, fontWeight: 800, color: "#f1f5f9" }}>{ri.campaign_name || "Análise da Campanha"}</div>
-              <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{rt === "catalog" ? "🗂️ Catálogo" : "🎯 Produto Único"} · Meta Ads · {ri.creative_type === "Vídeo" ? "🎬 Vídeo" : "🖼️ Imagem"}</div>
+              <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{rt === "catalog" ? "🗂️ Catálogo" : "🎯 Produto Único"} · Meta Ads · {ri.creative_type === "Vídeo" ? "🎬 Vídeo" : "🖼️ Imagem"} · ⏱️ {ri.campaign_days || 1} dia{(+ri.campaign_days || 1) > 1 ? "s" : ""} de dados</div>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ background: h.g, borderRadius: 20, padding: "4px 14px", fontWeight: 700, fontSize: 12 }}>{h.l}</span>
@@ -409,6 +419,9 @@ export default function GeniusMetrics() {
             <Field label="Preço (R$)" value={v.price} onChange={set("price")} placeholder="99.90" prefix="R$" />
             <Field label="Frete" value={v.shipping} onChange={set("shipping")} placeholder="Grátis / R$15" type="text" />
           </div>
+          <div style={{ marginTop: 12 }}>
+            <Field label="⏱️ Duração da campanha (dias) *" value={v.campaign_days} onChange={set("campaign_days")} placeholder="1" hint="Quantos dias de dados você está analisando? Ex: 1, 7, 30" />
+          </div>
         </SCard>
 
         <SCard color="#22c55e" icon="💰" title="Financeiro">
@@ -455,6 +468,22 @@ export default function GeniusMetrics() {
             <Field label="Compras Realizadas *" value={v.orders_total} onChange={set("orders_total")} placeholder="0" hint="Total de pedidos" />
             <Field label="Compras Pagas *" value={v.orders_paid} onChange={set("orders_paid")} placeholder="0" hint="Pagamentos confirmados" />
             {type === "catalog" && <Field label="Produtos vendidos (itens)" value={v.products_sold} onChange={set("products_sold")} placeholder="0" hint="Itens no catálogo" />}
+          </div>
+        </SCard>
+
+        <SCard color="#06b6d4" icon="💬" title="Contexto Qualitativo (opcional mas recomendado)">
+          <div>
+            <label style={S.lbl}>Informações relevantes sobre a campanha</label>
+            <textarea
+              value={v.context}
+              onChange={e => set("context")(e.target.value)}
+              placeholder={"Ex: Campanha de teste com 5 criativos diferentes, um por conjunto em ABO. Público broad 18-45. A maioria das vendas está saindo para mulheres 25-34. Produto novo no mercado, sem prova social ainda. Estou testando 2 ângulos: dor e transformação..."}
+              rows={5}
+              style={{ ...S.input, resize: "vertical", lineHeight: 1.55, paddingTop: 10 }}
+              onFocus={e => (e.target.style.borderColor = "rgba(6,182,212,0.6)")}
+              onBlur={e => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
+            />
+            <div style={S.hint}>Quanto mais contexto, mais precisa e personalizada será a análise da IA</div>
           </div>
         </SCard>
 
